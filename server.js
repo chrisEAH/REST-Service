@@ -1,18 +1,22 @@
     var express = require('express');  
     var path = require("path");   
     var bodyParser = require('body-parser');  
-    var mongo = require("mongoose");  
-      
-    var db = mongo.connect("mongodb://localhost:27017/AngularCRUD", function(err, response){  
-       if(err){ console.log( err); }  
-       else{ console.log('Connected to ' + db, ' + ', response); }  
-    });  
+    var mongo = require("mongoose");
+	var config = require("./config.json");
+	
+	var url="mongodb://"+config.host+":"+config.dbPort+"/"+config.db;	
+    var db = mongo.connect(url, { useNewUrlParser: true }, function(error){
+		if(error)
+		{ 
+			console.log("Connection Error" + error);
+		}
+	});
       
        
     var app = express(); 
-    app.use(bodyParser());  
+	app.use(bodyParser.urlencoded({extended:true})); 
     app.use(bodyParser.json({limit:'5mb'}));   
-    app.use(bodyParser.urlencoded({extended:true}));  
+     
        
       
     app.use(function (req, res, next) {        
@@ -25,57 +29,15 @@
       
      var Schema = mongo.Schema;  
       
-    var UsersSchema = new Schema({      
-     name: { type: String   },       
-     address: { type: String   },   
+    var messwerteSchema = new Schema({      
+     value: { type: Number   },       
+     timeStamp: { type: Date   },   
     },{ versionKey: false });  
        
       
-    var model = mongo.model('users', UsersSchema, 'users');  
+    var model = mongo.model('random', messwerteSchema);
       
-    app.post("/api/SaveUser",function(req,res){   
-     var mod = new model(req.body);  
-     if(req.body.mode =="Save")  
-     {  
-        mod.save(function(err,data){  
-          if(err){  
-             res.send(err);                
-          }  
-          else{        
-              res.send({data:"Record has been Inserted..!!"});  
-          }  
-     });  
-    }  
-    else   
-    {  
-     model.findByIdAndUpdate(req.body.id, { name: req.body.name, address: req.body.address},  
-       function(err,data) {  
-       if (err) {  
-       res.send(err);         
-       }  
-       else{        
-              res.send({data:"Record has been Updated..!!"});  
-         }  
-     });  
-      
-      
-    }  
-     })  
-      
-     app.post("/api/deleteUser",function(req,res){      
-        model.remove({ _id: req.body.id }, function(err) {    
-         if(err){    
-             res.send(err);    
-         }    
-         else{      
-                res.send({data:"Record has been Deleted..!!"});               
-            }    
-     });    
-       })  
-      
-      
-      
-     app.get("/api/getUser",function(req,res){  
+     app.get("/api/getMesswerte",function(req,res){  
         model.find({},function(err,data){  
                   if(err){  
                       res.send(err);  
@@ -87,7 +49,7 @@
       })  
       
       
-    app.listen(8080, function () {  
+    app.listen(config.restPort, function () {  
         
-     console.log('Example app listening on port 8080!')  
+     console.log('REST-Service listening on port '+config.restPort+'!')  
     })  

@@ -1,0 +1,6 @@
+{
+	"host":"localhost",
+	"db":"bigChart",
+	"dbPort":"27017",
+	"restPort":"8081"
+}
