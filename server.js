@@ -36,20 +36,109 @@
        
       
     var model = mongo.model('random', messwerteSchema);
-      
-     app.get("/api/getMesswerte",function(req,res){  
-        model.find({},function(err,data){  
-                  if(err){  
-                      res.send(err);  
-                  }  
-                  else{                
-                      res.send(data);  
-                      }  
-              });  
-      })  
-      
-      
+    var minDateQuery;
+    var maxDateQuery;
+    var minValueQuery;
+    var maxValueQuery; 
+    
+
+    //Fehler bei der simultanen Abarbeitung von abfragen und befüllen der Variablen, 
+    //maximal und minimal Werte extrem hoch oder niedrig gesetzt bei nichtsetzen der Parameter durch User
+
+     app.get("/api/getMesswerte",function(req,res){
+        minDateQuery = req.query.minDate;
+        maxDateQuery = req.query.maxDate;
+        minValueQuery = req.query.minValue;
+        maxValueQuery = req.query.maxValue;   
+        //axis restrictions
+        if(req.query.minDate == null || req.query.minDate==undefined){
+            //model.find({}, function(err, data)
+            //{if(err){  
+        //         res.send(err);  
+        //     }  
+        //     else{                
+                    minDateQuery = '1970-01-01';
+        //         minDateQuery = data[0].timeStamp;
+        //         res.send(minDateQuery);
+        //         }  
+        //     }).sort({timeStamp: 1}).limit(1);
+         }
+        else
+        {
+            if(Date.parse(req.query.minDate) == NaN)
+            {
+                
+                minDateQuery = '1970-01-01';
+                
+            }
+        }
+
+
+        
+        if(req.query.maxDate == null || req.query.maxDate==undefined){
+            //model.find({}, function(err, data)
+            //{if(err){  
+        //         res.send(err);  
+        //     }  
+        //     else{                
+                    maxDateQuery = '2200-01-01';
+        //         minDateQuery = data[0].timeStamp;
+        //         res.send(minDateQuery);
+        //         }  
+        //     }).sort({timeStamp: 1}).limit(1);
+         }
+        else
+        {
+            if(Date.parse(req.query.maxDate) == NaN)
+            {
+                
+                maxDateQuery = '2200-01-01';
+                 
+                
+            }
+        }
+
+        if(minValueQuery == null || minValueQuery == undefined){
+            minValueQuery = 0;
+        }else{
+            if(isNaN(minValueQuery) == true){
+                minValueQuery = 0;
+            }
+        }
+
+        if(maxValueQuery == null || maxValueQuery == undefined){
+            maxValueQuery = 10000;
+        }else{
+            if(isNaN(maxValueQuery) == true){
+                maxValueQuery = 10000;
+            }
+        }
+        // Query der die gesamte Abfrage mit den gesetzten Parametern ausführt
+
+        model.find({"timeStamp" : { $gte: new Date(minDateQuery), $lte: new Date(maxDateQuery)}, 
+            "value" : {$gte: minValueQuery, $lte: maxValueQuery}},function(err,data){  
+            if(err){  
+                res.send(err);  
+            }  
+            else{                
+                res.send(data);  
+                };
+            }); 
+    
+    });
+    
+
+            
     app.listen(config.restPort, function () {  
         
-     console.log('REST-Service listening on port '+config.restPort+'!')  
-    })  
+            console.log('REST-Service listening on port '+config.restPort+'!')  
+    })
+    
+        
+        
+
+              
+
+    
+      
+  
