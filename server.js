@@ -1,17 +1,26 @@
     var express = require('express');
-    var path = require("path");
     var bodyParser = require('body-parser');
-    var mongo = require("mongoose");
+    var MongoClient = require('mongodb').MongoClient;
     var config = require("./config.json");
+	var eventEmitter = require('events').EventEmitter;
+	var math=require('mathjs');
 
-    var url = "mongodb://" + config.host + ":" + config.dbPort + "/" + config.db;
-    var db = mongo.connect(url, {
-        useNewUrlParser: true
-    }, function(error) {
-        if (error) {
-            console.log("Connection Error" + error);
-        }
-    });
+	var ee = new eventEmitter();
+	
+	/*
+	var frameAnfang=0;
+	var frameEnde=0;
+	
+	var frameIntervall=0;
+	var pixelEntfernung=0;
+	var n=1;
+	
+	
+	
+	var results=new Array();*/
+	
+	
+	
     var app = express();
     app.use(bodyParser.urlencoded({
         extended: true
@@ -19,8 +28,6 @@
     app.use(bodyParser.json({
         limit: '5mb'
     }));
-
-
 
     app.use(function(req, res, next) {
         res.setHeader('Access-Control-Allow-Origin', 'http://localhost:4200');
@@ -31,114 +38,212 @@
         res.setHeader('Access-Control-Allow-Credentials', true);
         next();
     });
-
-    var Schema = mongo.Schema;
-
-    var messwerteSchema = new Schema({
-        value: {
-            type: Number
-        },
-        timeStamp: {
-            type: Date
-        },
-    }, {
-        versionKey: false
+    
+	
+	app.listen(config.restPort, function() {
+        console.log('REST-Service listening on port ' + config.restPort + '!');
     });
+	
+	
+	app.get("/api/getMax", function(req, response) {
+		let results=new Array();
+		
+		let frameAnfang=checkNumberValue(req.query.frameAnfang,0);
+		let frameEnde=checkNumberValue(req.query.frameEnde,100);
+		
+		console.log("Frame Anfang: " + frameAnfang);
+		console.log("Frame Ende: " + frameEnde);
+	
+		
+		MongoClient.connect("mongodb://"+config.host+":"+config.port,  { useNewUrlParser: true }, function(err, db){  
+		if(err){ console.log( err); }  
+		else{ 
+			var dbObject=db.db(config.db);
+				ee.emit('getMongoMaxResults',dbObject,db,response, frameAnfang, frameEnde, results);
+		}  
+		}); 
 
+    });
+	
+	app.get("/api/getMaxTempFromVariablenMesspunkt", function(req, response) {
+		let results=new Array();
+		let n=1;
+		
+		let frameAnfang=checkNumberValue(req.query.frameAnfang,0);
+		let frameEnde=checkNumberValue(req.query.frameEnde,100);
+		
+		let frameIntervall=checkNumberValue(req.query.frameIntervall,1);
+		let pixelEntfernung=checkNumberValue(req.query.pixelEntfernung,10);;
+		
+		console.log("Frame Anfang: " + frameAnfang);
+		console.log("Frame Ende: " + frameEnde);
+		console.log("Frame Intervall: " + frameIntervall);
+		console.log("pixelEntfernung: " + pixelEntfernung);
+	
+		
+		MongoClient.connect("mongodb://"+config.host+":"+config.port,  { useNewUrlParser: true }, function(err, db){  
+		if(err){ console.log( err); }  
+		else{ 
+			var dbObject=db.db(config.db);
+				ee.emit('getFirstPixelCoordinate',dbObject,db,response,n, frameAnfang, frameEnde, frameIntervall, pixelEntfernung, results);
+		}  
+		}); 
 
-    var model = mongo.model('random', messwerteSchema);
-    var minDateQuery;
-    var maxDateQuery;
-    var minValueQuery;
-    var maxValueQuery;
+    });
+	
+	ee.on('getFirstPixelCoordinate',function(dbObject,db,response,n, frameAnfang, frameEnde, frameIntervall, pixelEntfernung, results)
+	{
+		if(frameAnfang<=frameEnde)
+			{
+				dbObject.collection(config.collectionName).find({frame:frameAnfang}).sort({temp:-1}).limit(1).toArray(function(err,data){
+					if(data.length>0)
+					{
+						console.log("Frame: " + data[0].frame);
+						console.log("firstPixel X: "+ data[0].x);
+						console.log("firstPixel Y: "+ data[0].y);
+						ee.emit('getSecondPixelCoordinate',dbObject,db,response,n, data[0].x, data[0].y, frameAnfang, frameEnde, frameIntervall, pixelEntfernung, results);
+					}
+					else
+					{
+						frameAnfang++;
+						ee.emit('getFirstPixelCoordinate',dbObject,db,response,n, frameAnfang, frameEnde, frameIntervall, pixelEntfernung, results);
+					}
+					
+				});
+			}
+			else
+			{
+				ee.emit('sendMongoResults', results,db,response);
+			}
+	});
+	
+	
+	ee.on('getSecondPixelCoordinate',function(dbObject,db,response,n, firstPixelX, firstPixelY, frameAnfang, frameEnde, frameIntervall, pixelEntfernung, results)
+	{
+		if(frameAnfang+frameIntervall*n<=frameEnde)
+			{
+				dbObject.collection(config.collectionName).find({frame:frameAnfang+frameIntervall*n}).sort({temp:-1}).limit(1).toArray(function(err,data){
+					if(data.length>0)
+					{
+						var secondPixelX=data[0].x;
+						var secondPixelY=data[0].y;
+						
+						console.log("secondPixel X: "+ secondPixelX);
+						console.log("secondPixel Y: "+ secondPixelY);
+						console.log("n: " + n);
+						
+						//wenn beide coordinaten gleich sind, denn kann kein weg berechnet werden
+						//somit wider holen bis die pixel unterschide
+						if(secondPixelX==firstPixelX && secondPixelY==firstPixelY)
+						{
+							n++;
+							ee.emit('getSecondPixelCoordinate',dbObject,db,response,n, firstPixelX, firstPixelY, frameAnfang, frameEnde, frameIntervall, pixelEntfernung, results);
+						}
+						else
+						{
+							n=1;
+							variablenPixel=getVariablenPixel(firstPixelX, firstPixelY, secondPixelX, secondPixelY, pixelEntfernung);
+							console.log("varPixel X: "+ variablenPixel.x);
+							console.log("varPixel Y: "+ variablenPixel.y);
+							ee.emit('getTempFromVariablenPixel',dbObject,db,response,n, variablenPixel, frameAnfang, frameEnde, frameIntervall, pixelEntfernung, results);
+						}
+						
+						
+					}
+					else
+					{
+						console.log("-------------------");
+						n=1;
+						frameAnfang++;
+						ee.emit('getFirstPixelCoordinate',dbObject,db,response,n, frameAnfang, frameEnde, frameIntervall, pixelEntfernung, results);
+					}
+				});
+			}
+			else
+			{
+				ee.emit('sendMongoResults', results,db,response);
+			}
+	});
+	
+	ee.on('getTempFromVariablenPixel',function(dbObject,db,response,n,variablenPixel, frameAnfang, frameEnde, frameIntervall, pixelEntfernung, results)
+	{
+		if(frameAnfang<=frameEnde)
+			{
+				dbObject.collection(config.collectionName).find({frame:frameAnfang,x:variablenPixel.x, y:variablenPixel.y}).limit(1).toArray(function(err,data){
+					if(data.length>0)
+					{
+						console.log("var. Temp: "+data[0].temp);
+						var frame={frame:frameAnfang, temp:data[0].temp};
+						results.push(frame);
+					}
+					console.log("-------------------");
+					frameAnfang++;
+					ee.emit('getFirstPixelCoordinate',dbObject,db,response,n, frameAnfang, frameEnde, frameIntervall, pixelEntfernung, results);
+				});
+			}
+			else
+			{
+				ee.emit('sendMongoResults', results,db,response);
+			}
+	});
+	
+	
+	
+	ee.on('getMongoMaxResults',function(dbObject,db,response,frameAnfang,frameEnde, results)
+	{		
+		if(frameAnfang<=frameEnde)
+			{
+				dbObject.collection(config.collectionName).find({frame:frameAnfang}).sort({temp:-1}).limit(1).toArray(function(err,data){
+					if(data.length>0)
+					{
+						console.log("Frame: " +data[0].frame + " Temp: "+ data[0].temp);
+						var frame={frame:frameAnfang, temp:  data[0].temp};
+						results.push(frame);
+					}
+					frameAnfang++;
+					ee.emit('getMongoMaxResults',dbObject,db,response,frameAnfang, frameEnde, results);
+				});
+			}
+			else
+			{
+				ee.emit('sendMongoResults', results,db,response);
+			}
+	});
+	
 
-
-    //Fehler bei der simultanen Abarbeitung von abfragen und befüllen der Variablen, 
-    //maximal und minimal Werte extrem hoch oder niedrig gesetzt bei nichtsetzen der Parameter durch User
-
-    app.get("/api/getMesswerte", function(req, res) {
-        minDateQuery = req.query.minDate;
-        maxDateQuery = req.query.maxDate;
-        minValueQuery = req.query.minValue;
-        maxValueQuery = req.query.maxValue;
-
-        console.log(minValueQuery + "   " + maxValueQuery);
-        //console.log(req.params('minValue') + " " +req.param('maxValue'));
-        //axis restrictions
-        if (req.query.minDate == null || req.query.minDate == undefined) {
-            //model.find({}, function(err, data)
-            //{if(err){  
-            //         res.send(err);  
-            //     }  
-            //     else{                
-            minDateQuery = '1970-01-01';
-            //         minDateQuery = data[0].timeStamp;
-            //         res.send(minDateQuery);
-            //         }  
-            //     }).sort({timeStamp: 1}).limit(1);
+	ee.on('sendMongoResults', function(results,db,response)
+	{
+		response.send(results);
+		db.close();
+	});
+	
+	function checkNumberValue(value, defaultValue)
+	{
+		if (value == null || value == undefined || value==0) {
+            return defaultValue;
         } else {
-            if (Date.parse(req.query.minDate) == NaN) {
-                minDateQuery = '1970-01-01';
-            }
-        }
-
-        if (req.query.maxDate == null || req.query.maxDate == undefined) {
-            //model.find({}, function(err, data)
-            //{if(err){  
-            //         res.send(err);  
-            //     }  
-            //     else{                
-            maxDateQuery = '2200-01-01';
-            //         minDateQuery = data[0].timeStamp;
-            //         res.send(minDateQuery);
-            //         }  
-            //     }).sort({timeStamp: 1}).limit(1);
-        } else {
-            if (Date.parse(req.query.maxDate) == NaN || req.query.maxDate==0) {
-                maxDateQuery = '2200-01-01';
-            }
-        }
-
-        if (minValueQuery == null || minValueQuery == undefined) {
-            minValueQuery = 0;
-        } else {
-            if (isNaN(minValueQuery) == true) {
-                minValueQuery = 0;
-            }
-        }
-
-        if (maxValueQuery == null || maxValueQuery == undefined || maxValueQuery==0) {
-            maxValueQuery = 10000;
-        } else {
-            if (isNaN(maxValueQuery) == true) {
-                maxValueQuery = 10000;
+            if (value == NaN) {
+                return defaultValue;
             }
         }
 		
-        // Query der die gesamte Abfrage mit den gesetzten Parametern ausführt
-
-        model.find({
-            "timeStamp": {
-                $gte: new Date(minDateQuery),
-                $lte: new Date(maxDateQuery)
-            },
-            "value": {
-                $gte: minValueQuery,
-                $lte: maxValueQuery
-            }
-        }, function(err, data) {
-            if (err) {
-                res.send(err);
-            } else {
-                res.send(data);
-            };
-        });
-
-    });
-
-
-
-    app.listen(config.restPort, function() {
-
-        console.log('REST-Service listening on port ' + config.restPort + '!')
-    })
+		return parseInt(value, 10);
+	}
+	
+	function getVariablenPixel(firstPixelX, firstPixelY, secondPixelX, secondPixelY, pixelEntfernung)
+	{		
+		x=math.round(math.sqrt(math.pow(pixelEntfernung,2)/(1+math.pow(((secondPixelY-firstPixelY)/(secondPixelX-firstPixelX)),2))));
+		
+		//Problem. eine Funktion darf nur einen Y Wert haben. Weil sie sonst nicht definiert ist.
+		//sprich anstieg unendlich geht nicht
+		if((secondPixelX-firstPixelX)==0)
+		{
+			y=pixelEntfernung;
+		}
+		else
+		{
+			y=math.round(((secondPixelY-firstPixelY)/(secondPixelX-firstPixelX))*x);
+		}
+		
+		return {x:x+firstPixelX, y:y+firstPixelY};
+	}
