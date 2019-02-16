@@ -1,0 +1,10 @@
+services:
+  rest:
+    image: 'paua/sensorik-rest'
+    environment:
+      rest_monogo_host: "localhost"
+      rest_monogo_dbPort: 27017
+      rest_monogo_db: "bigChart"
+      rest_monogo_restPort: 8081
+    ports:
+      - 8081:8081

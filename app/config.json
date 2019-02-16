@@ -2,7 +2,5 @@
 	"host":"localhost",
 	"dbPort":"27017",
 	"restPort":"8081",
-	
-	"db":"bigChart",
-	"collectionName":"2"
+	"db":"bigChart"
 }
