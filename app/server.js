@@ -7,21 +7,17 @@
 	var ee = new eventEmitter();
 
 	var config={
-		host:"",
+		host:"localhost",
 		dbPort:27017,
-		restPort:8081,
-		db:""
+		restPort:8080,
+		db:"bigChart"
 	};
 
-	config.host="localhost";
-	config.dbPort=27017;
-	config.restPor=8081;
-	config.db="bigChart";
-
-	config.host=process.env.rest_monogo_host;
-	config.dbPort=process.env.rest_monogo_dbPort;
-	config.db=process.env.rest_monogo_db;
-	config.restPor=process.env.rest_monogo_restPort;
+	if(process.env.rest_monogo_host!=undefined){config.host=process.env.rest_monogo_host}
+	if(process.env.rest_monogo_port!=undefined){config.dbPort=process.env.rest_monogo_port}
+	if(process.env.rest_monogo_db!=undefined){config.db=process.env.rest_monogo_db}
+	if(process.env.rest_port!=undefined){config.restPort=process.env.rest_port}
+	
 
 
     var app = express();
@@ -33,8 +29,7 @@
     }));
 
     app.use(function(req, res, next) {
-        res.setHeader('Access-Control-Allow-Origin', 'http://localhost:4200');
-        res.setHeader('Access-Control-Allow-Origin', 'http://127.0.0.1:4200');
+        res.setHeader('Access-Control-Allow-Origin', '*');
         res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS, PUT, PATCH, DELETE');
         res.setHeader('Access-Control-Allow-Headers', 'X-Requested-With,content-type');
         res.setHeader('Access-Control-Allow-Credentials', true);
@@ -48,27 +43,31 @@
 	});
 	
 	app.get("/api/getCollections", function(req, response) {
-		let results=new Array();
-		
-		MongoClient.connect("mongodb://"+config.host+":"+config.port,  { useNewUrlParser: true }, function(err, db){  
-		if(err){ console.log( err); }  
-		else{
-			var dbObject=db.db(config.db);
-			dbObject.listCollections().toArray(function(err, names){
-				console.log("collections:");
-				console.log(names);
-				ee.emit("sendMongoResults",  names,db,response);
-			});
-		}  
-		}); 
+		const mongoURL="mongodb://"+config.host+":"+config.dbPort;
+		const dbName = config.db;	
+		const client = new MongoClient(mongoURL,{ useNewUrlParser: true });
 
-    });
-	
+		var myCollection=new Array();
+		var n=0;
+
+		client.connect(function(err) {
+  			const db = client.db(dbName);
+
+			db.listCollections().toArray(function(err,array)
+			{
+				ee.emit("getMaxFrame", array, n, myCollection, client, response);
+				/*array.forEach(function(element)
+				{
+					myCollection.push({name:element.name, anzahl:3000});
+				})
+				ee.emit("sendMongoResults",myCollection,client,response)*/
+			});
+		});
+	});   
 	
 	app.get("/api/getMax", function(req, response) {
 		let results=new Array();
 		
-
 		collection=new String();
 		collection=req.query.collection;
 
@@ -83,7 +82,7 @@
 		if(err){ console.log( err); }  
 		else{ 
 			var dbObject=db.db(config.db);
-				ee.emit('getMongoMaxResults',dbObject,db,collection,response, frameAnfang, frameEnde, results);
+			ee.emit('getMongoMaxResults',dbObject,db,collection,response, frameAnfang, frameEnde, results);
 		}  
 		});
 
@@ -120,12 +119,34 @@
 			else
 			{
 				ee.emit('getMongoMaxResults',dbObject,db,collection,response, frameAnfang, frameEnde, results);
-		
 			}
 		}  
 		}); 
 
-    });
+	});
+	
+	ee.on('getMaxFrame',function(arrayCollection, n, myCollection, client,response)
+	{
+		const db = client.db(config.db);
+		if(n<arrayCollection.length)
+		{
+			db.collection(arrayCollection[n].name).findOne({maxFrame:{$gt:0}},function(err,result)
+			{
+				if (err) console.log(err);
+				if(result!=undefined && arrayCollection[n].name!="undefined")
+				{
+					console.log(arrayCollection[n].name+":"+result.maxFrame);
+					myCollection.push({name:arrayCollection[n].name,anzahl:result.maxFrame});
+				}
+				n++;
+				ee.emit("getMaxFrame", arrayCollection, n, myCollection,client,response);
+			});
+		}
+		else
+		{
+			ee.emit("sendMongoResults", myCollection,client,response);
+		}
+	});
 	
 	ee.on('getFirstPixelCoordinate',function(dbObject,db,collection,response,n, frameAnfang, frameEnde, frameIntervall, pixelEntfernung, results)
 	{
@@ -169,7 +190,7 @@
 						console.log("n: " + n);
 						
 						//wenn beide coordinaten gleich sind, denn kann kein weg berechnet werden
-						//somit wider holen bis die pixel unterschide
+						//somit wiederholen bis die pixel sich unterschiden
 						if(secondPixelX==firstPixelX && secondPixelY==firstPixelY)
 						{
 							n++;
@@ -268,7 +289,6 @@
 	
 	function getVariablenPixel(firstPixelX, firstPixelY, secondPixelX, secondPixelY, pixelEntfernung)
 	{		
-		
 			x=math.round(math.sqrt(math.pow(pixelEntfernung,2)/(1+math.pow(((secondPixelY-firstPixelY)/(secondPixelX-firstPixelX)),2))));
 		
 			//Problem. eine Funktion darf nur einen Y Wert haben. Weil sie sonst nicht definiert ist.
@@ -283,6 +303,4 @@
 			}
 			
 			return {x:x+firstPixelX, y:y+firstPixelY};
-		
-		
 	}

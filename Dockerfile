@@ -3,4 +3,6 @@ WORKDIR /app
 COPY app /app
 
 RUN npm install
-RUN npm start
+
+RUN ["chmod", "+x", "./start.sh"]
+CMD ["./start.sh"]
